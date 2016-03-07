@@ -172,8 +172,6 @@ float portalEditRadius = 150.0f;
 bool portalsEnabled = true;
 bool super_spawn = false;
 
-CClientCommand portal_menu( "portal_menu", "Open the portal_spawner menu", @PortalMenu );
-
 void PluginInit()
 {
 	g_Module.ScriptInfo.SetAuthor( "w00tguy" );
@@ -460,6 +458,43 @@ string getPortalSprite(int portalType)
 		case PORTAL_BIDIR: return bi_sprite;
 	}
 	return entrance_sprite;
+}
+
+void add_portal_action(CBasePlayer@ plr, string action)
+{
+	PlayerState@ state = getPlayerState(plr);
+	Vector angles = plr.pev.v_angle;
+	if (canAddPortal(plr)) {
+		//print("Angles: " + angles.x + " " + angles.y + " " + angles.z);
+		
+		for (int x = 0; x < 8; x++)
+		{
+			for (int y = 0; y < 4; y++)
+			{
+				Vector offset = Vector(x*portalTouchRadius*2, y*portalTouchRadius*2, 0);
+				int portalType;
+				if (action == "add-enter")
+					portalType = PORTAL_ENTER;
+				else if (action == "add-exit") 
+					portalType = PORTAL_EXIT;
+				else if (action == "add-bi") 
+					portalType = PORTAL_BIDIR;
+				string spriteType = getPortalSprite(portalType);
+				string spawnSound = super_spawn ? "" : spawn_sound;
+				
+				CBaseEntity@ portalEnt = createPortal(plr.pev.origin, spriteType, spawnSound, portalOffset);
+				portalEnt.pev.origin = portalEnt.pev.origin + offset;
+				Portal@ portal = Portal(portalEnt, plr, angles, portalType);
+				portals.insertLast(portal);
+				
+				state.touchingPortal = portals.length()-1;
+				if (!super_spawn)
+					break;
+			}
+			if (!super_spawn)
+				break;
+		}
+	}
 }
 
 void portalMenuCallback(CTextMenu@ menu, CBasePlayer@ plr, int page, const CTextMenuItem@ item)
@@ -761,38 +796,7 @@ void portalMenuCallback(CTextMenu@ menu, CBasePlayer@ plr, int page, const CText
 	}
 	else if (action.Find("add-") == 0)
 	{
-		Vector angles = plr.pev.v_angle;
-		if (canAddPortal(plr)) {
-			//print("Angles: " + angles.x + " " + angles.y + " " + angles.z);
-			
-			for (int x = 0; x < 8; x++)
-			{
-				for (int y = 0; y < 4; y++)
-				{
-					Vector offset = Vector(x*portalTouchRadius*2, y*portalTouchRadius*2, 0);
-					int portalType;
-					if (action == "add-enter")
-						portalType = PORTAL_ENTER;
-					else if (action == "add-exit") 
-						portalType = PORTAL_EXIT;
-					else if (action == "add-bi") 
-						portalType = PORTAL_BIDIR;
-					string spriteType = getPortalSprite(portalType);
-					string spawnSound = super_spawn ? "" : spawn_sound;
-					
-					CBaseEntity@ portalEnt = createPortal(plr.pev.origin, spriteType, spawnSound, portalOffset);
-					portalEnt.pev.origin = portalEnt.pev.origin + offset;
-					Portal@ portal = Portal(portalEnt, plr, angles, portalType);
-					portals.insertLast(portal);
-					
-					state.touchingPortal = portals.length()-1;
-					if (!super_spawn)
-						break;
-				}
-				if (!super_spawn)
-					break;
-			}
-		}
+		add_portal_action(plr, action);
 	}
 	
 	g_Scheduler.SetTimeout("openPortalMenu", 0, @plr);
@@ -1594,51 +1598,79 @@ HookReturnCode ClientLeave(CBasePlayer@ leaver)
 	return HOOK_CONTINUE;
 }
 
+bool doPortalCommand(CBasePlayer@ plr, const CCommand@ args)
+{
+	PlayerState@ state = getPlayerState(plr);
+	println("DO THE COMMMAND");
+	
+	if ( args.ArgC() > 0 )
+	{
+		if (args[0] == '.ps')
+		{
+			println("GOT CMD: " + args[0] + " " + args.ArgC());
+			if ( args.ArgC() == 1 ) // open menu if no args
+			{
+				if (g_PlayerFuncs.AdminLevel(plr) < ADMIN_YES)
+				{
+					g_PlayerFuncs.SayText(plr, "You don't have access to that command, peasent.\n");
+					return true;
+				}
+		
+				state.editing = -1;
+				state.linkLast = -1;
+				state.menuPage = 0;
+				
+				openPortalMenu(plr);
+
+				return true;
+			} 
+			else if (args.ArgC() > 1)
+			{
+				if (g_PlayerFuncs.AdminLevel(plr) < ADMIN_YES)
+				{
+					g_PlayerFuncs.SayText(plr, "You don't have access to that command, peasent.\n");
+					return true;
+				}
+		
+				string portalType = "enter";
+				if ( args.ArgC() > 1 )
+				{
+					if (args[1].Find("en") == 0) {
+						portalType = "en";
+					}
+					else if (args[1].Find("ex") == 0) {
+						portalType = "exit";
+					} else if (args[1].Find("bi") == 0) {
+						portalType = "bi";
+					}
+				}
+				add_portal_action(plr, "add-" + portalType);
+				
+				return true;
+			}
+		}
+	}
+	return false;
+}
+
 HookReturnCode ClientSay( SayParameters@ pParams )
 {
 	CBasePlayer@ plr = pParams.GetPlayer();
 	const CCommand@ args = pParams.GetArguments();	
-	
-	PlayerState@ state = getPlayerState(plr);
-	
-	if ( args.ArgC() > 0 )
+	println("CLINET SAY");
+	if (doPortalCommand(plr, args))
 	{
-		if ( args[0] == ".portal_menu" )
-		{
-			pParams.ShouldHide = true;
-			
-			if (g_PlayerFuncs.AdminLevel(plr) < ADMIN_YES)
-			{
-				g_PlayerFuncs.SayText(plr, "You don't have access to that command, peasent.\n");
-				return HOOK_HANDLED;
-			}
-	
-			state.editing = -1;
-			state.linkLast = -1;
-			state.menuPage = 0;
-			
-			if (args[0] == ".portal_menu")
-				openPortalMenu(plr);
-
-			return HOOK_HANDLED;
-		}
+		pParams.ShouldHide = true;
+		return HOOK_HANDLED;
 	}
 	return HOOK_CONTINUE;
 }
 
-void PortalMenu( const CCommand@ args )
-{
-	CBasePlayer@ plr = g_ConCommandSystem.GetCurrentPlayer();
-	
-	if (g_PlayerFuncs.AdminLevel(plr) < ADMIN_YES)
-	{
-		g_PlayerFuncs.SayText(plr, "You don't have access to that command, peasent.\n");
-		return;
-	}
-	
-	PlayerState@ state = getPlayerState(plr);
+CClientCommand _portalMenu( "ps", "Open the Portal Spawner menu (or spawn a portal with .ps en/ex/bi)", @PortalCommand );
 
-	state.editing = -1;
-	state.linkLast = -1;
-	openPortalMenu(plr);
+void PortalCommand( const CCommand@ args )
+{
+	CBasePlayer@ plr = g_ConCommandSystem.GetCurrentPlayer();	
+	PlayerState@ state = getPlayerState(plr);
+	doPortalCommand(plr, args);
 }
