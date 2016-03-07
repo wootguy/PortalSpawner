@@ -8,6 +8,7 @@ class PlayerState
 	bool removeConfirm;   // player should confirm if he wants ALL portals removed
 	int deletePortal;     // player should confirm if he wants to delete another player's portal
 	int linkLast; 		  // player is choosing a previous portal to link to
+	int menuPage;         // custom menu paging. I don't like the default paging >:|
 	
 	void initMenu(CBasePlayer@ plr, TextMenuPlayerSlotCallback@ callback)
 	{
@@ -74,6 +75,20 @@ class Portal
 		ent = portalEnt;
 		angles = portalAngles;
 		type = portalType;
+		init();
+	}
+	
+	Portal(CBaseEntity@ portalEnt, string creator, Vector portalAngles, int portalType)
+	{
+		owner = creator;
+		ent = portalEnt;
+		angles = portalAngles;
+		type = portalType;
+		init();
+	}
+	
+	void init()
+	{
 		exitSpeed = EXIT_MATCH_INPUT;
 		rotateMode = ROTATE_NO;
 		enabled = true;
@@ -123,6 +138,16 @@ class Portal
 		beam.pev.targetname = "portalspawner_beam";
 		beam.SetFlags( BEAM_FSINE );
 	}
+	
+	string serialize()
+	{
+		if (!ent)
+			return "";
+			
+		CBaseEntity@ e = ent;
+		return e.pev.origin.ToString() + '"' + e.pev.angles.ToString() + '"' + owner + '"' +
+			   type + '"' + creationTime  + '"' + exitSpeed + '"' + rotateMode + '"' + target;
+	}
 }
 
 // persistent-ish player data, organized by steam-id or username if on a LAN server, values are @PlayerState
@@ -139,7 +164,8 @@ string portal_targetname = "pspawner_asplugin_portal";
 
 array<Portal@> portals;
 
-int MAX_MAP_PORTALS = 64;
+int MAX_MAP_PORTALS = 32;
+int MAX_SAVE_DATA_LENGTH = 1015; // Maximum length of a value saved with trigger_save. Discovered through testing
 float portalOffset = 18.0f;
 float portalTouchRadius = 40.0f;
 float portalEditRadius = 150.0f;
@@ -170,6 +196,7 @@ void MapInit()
 	g_SoundSystem.PrecacheSound(remove_sound);
 	
 	removeAllPortals();
+	g_Scheduler.SetTimeout("loadMapPortals", 2);
 }
 
 HookReturnCode MapChange()
@@ -206,15 +233,14 @@ PlayerState@ getPlayerState(CBasePlayer@ plr)
 		state.editing = -1;
 		state.linkLast = -1;
 		state.deletePortal = -1;
+		state.menuPage = 0;
 		player_states[steamId] = state;
 	}
 	return cast<PlayerState@>( player_states[steamId] );
 }
 
-CBaseEntity@ createPortal(CBasePlayer@ plr, string spriteFile, string soundFile)
-{
-	Vector origin = plr.pev.origin;
-	
+CBaseEntity@ createPortal(Vector origin, string spriteFile, string soundFile, float zoffset)
+{	
 	// create sprite at this location
 	string spriteName = portal_targetname;
 	dictionary keyvalues;
@@ -228,7 +254,7 @@ CBaseEntity@ createPortal(CBasePlayer@ plr, string spriteFile, string soundFile)
 	keyvalues["renderamt"] = portalsEnabled ? "200" : "100";
 	keyvalues["spawnflags"] = "1";
 	keyvalues["made_with_portal_spawner"] = "very_yes"; // TODO: This doesn't work. Learn about custom keyvalues
-	keyvalues["origin"] = "" + origin.x + " " + origin.y + " " + (origin.z+portalOffset);
+	keyvalues["origin"] = "" + origin.x + " " + origin.y + " " + (origin.z+zoffset);
 	
 	CBaseEntity@ portal = g_EntityFuncs.CreateEntity( "env_sprite", keyvalues, true );
 	
@@ -273,6 +299,10 @@ bool isTooCloseToPortal(CBasePlayer@ plr, int ignoreIdx)
 }
 
 bool canAddPortal(CBasePlayer@ plr) {
+	if (saveLoadBlock) {
+		g_PlayerFuncs.SayText(plr, "Wait for the current save/load operation to finish!\n");
+		return false;
+	}
 	if (int(portals.length()) == MAX_MAP_PORTALS)
 	{
 		g_PlayerFuncs.SayText(plr, "Max portals reached (" + MAX_MAP_PORTALS + ")\n");
@@ -421,6 +451,17 @@ bool isPlayerEditingPortal(int idx)
 	return false;
 }
 
+string getPortalSprite(int portalType)
+{
+	switch(portalType)
+	{
+		case PORTAL_ENTER: return entrance_sprite;
+		case PORTAL_EXIT: return exit_sprite;
+		case PORTAL_BIDIR: return bi_sprite;
+	}
+	return entrance_sprite;
+}
+
 void portalMenuCallback(CTextMenu@ menu, CBasePlayer@ plr, int page, const CTextMenuItem@ item)
 {
 	PlayerState@ state = getPlayerState(plr);
@@ -432,6 +473,10 @@ void portalMenuCallback(CTextMenu@ menu, CBasePlayer@ plr, int page, const CText
 				portals[state.editing].enable();
 		}
 		state.editing = -1;
+		state.removeConfirm = false;
+		state.deletePortal = -1;
+		state.linkLast = -1;
+		state.menuPage = 0;
 		return;
 	}
 	string action = item.szUserData;
@@ -452,8 +497,16 @@ void portalMenuCallback(CTextMenu@ menu, CBasePlayer@ plr, int page, const CText
 				portals[i].disable();
 		}
 	}
-	else if (action == "edit")
+	else if (action == "next-page")
 	{
+		state.menuPage += 1;
+	}
+	else if (action == "previous-page")
+	{
+		state.menuPage -= 1;
+	}
+	else if (action == "edit")
+	{			
 		int closestPortal = getClosestPortalIdx(plr);
 		if (closestPortal == -1)
 		{
@@ -473,6 +526,11 @@ void portalMenuCallback(CTextMenu@ menu, CBasePlayer@ plr, int page, const CText
 					break;
 				}
 			}
+			
+			if (saveLoadBlock) {
+				g_PlayerFuncs.SayText(plr, "Wait for the current save/load operation to finish!\n");
+				canEdit = false;
+			}
 	
 			if (canEdit)
 			{
@@ -484,7 +542,6 @@ void portalMenuCallback(CTextMenu@ menu, CBasePlayer@ plr, int page, const CText
 					p.drawBeamTo(portals[p.target].ent);
 				}
 			}
-			
 		}
 	}
 	else if (action == "edit-link-confirm")
@@ -681,6 +738,27 @@ void portalMenuCallback(CTextMenu@ menu, CBasePlayer@ plr, int page, const CText
 		g_PlayerFuncs.SayText(plr, "All of your portals were removed\n");
 		state.removeConfirm = false;
 	}
+	else if (action == "save") 
+	{
+		if (!saveLoadBlock)
+		{
+			g_PlayerFuncs.SayTextAll(plr, "" + plr.pev.netname + " saved map portals\n");
+			saveMapPortals();
+		}
+		else
+			g_PlayerFuncs.SayText(plr, "Wait for the current save/load operation to finish!\n");
+		
+	}
+	else if (action == "load") 
+	{
+		if (!saveLoadBlock)
+		{
+			g_PlayerFuncs.SayTextAll(plr, "" + plr.pev.netname + " reloaded map portals\n");
+			loadMapPortals();
+		}
+		else
+			g_PlayerFuncs.SayText(plr, "Wait for the current save/load operation to finish!\n");
+	}
 	else if (action.Find("add-") == 0)
 	{
 		Vector angles = plr.pev.v_angle;
@@ -689,25 +767,20 @@ void portalMenuCallback(CTextMenu@ menu, CBasePlayer@ plr, int page, const CText
 			
 			for (int x = 0; x < 8; x++)
 			{
-				for (int y = 0; y < 8; y++)
+				for (int y = 0; y < 4; y++)
 				{
 					Vector offset = Vector(x*portalTouchRadius*2, y*portalTouchRadius*2, 0);
 					int portalType;
-					string spriteType;
-					if (action == "add-enter") {
+					if (action == "add-enter")
 						portalType = PORTAL_ENTER;
-						spriteType = entrance_sprite;
-					}
-					else if (action == "add-exit") {
+					else if (action == "add-exit") 
 						portalType = PORTAL_EXIT;
-						spriteType = exit_sprite;
-					}
-					else if (action == "add-bi") {
+					else if (action == "add-bi") 
 						portalType = PORTAL_BIDIR;
-						spriteType = bi_sprite;
-					}
+					string spriteType = getPortalSprite(portalType);
+					string spawnSound = super_spawn ? "" : spawn_sound;
 					
-					CBaseEntity@ portalEnt = createPortal(plr, spriteType, spawn_sound);
+					CBaseEntity@ portalEnt = createPortal(plr.pev.origin, spriteType, spawnSound, portalOffset);
 					portalEnt.pev.origin = portalEnt.pev.origin + offset;
 					Portal@ portal = Portal(portalEnt, plr, angles, portalType);
 					portals.insertLast(portal);
@@ -795,7 +868,7 @@ void checkMonsterTouching(EHandle entHandle)
 void teleportEnt(CBaseEntity@ ent, int portalIdx, Vector offset)
 {
 	Portal@ portal = portals[portalIdx];
-	if (ent.IsPlayer() != 0)
+	if (ent.IsPlayer())
 	{
 		CBasePlayer@ plr = cast< CBasePlayer@ >(@ent);
 		PlayerState@ state = getPlayerState(plr);
@@ -836,7 +909,7 @@ void teleportEnt(CBaseEntity@ ent, int portalIdx, Vector offset)
 		
 		// Force player to duck just in case the exit is too low
 		// This has no side effects if the portal is high enough and ducking isn't required
-		if (ent.IsPlayer() != 0)
+		if (ent.IsPlayer())
 		{
 			ent.pev.flDuckTime = 26;
 			ent.pev.flags |= FL_DUCKING;
@@ -849,7 +922,7 @@ void teleportEnt(CBaseEntity@ ent, int portalIdx, Vector offset)
 				ent.pev.angles = exit.angles;
 			else if (exit.rotateMode == ROTATE_YAW_ONLY)
 			{
-				if (ent.IsPlayer() != 0)
+				if (ent.IsPlayer())
 					ent.pev.angles = ent.pev.v_angle;
 				ent.pev.angles.y = exit.angles.y;
 			}
@@ -857,7 +930,7 @@ void teleportEnt(CBaseEntity@ ent, int portalIdx, Vector offset)
 			
 			// Rotate the velocity vector to correct yaw
 			Vector angleDiff = Vector(0,0,0);
-			if (ent.IsPlayer() != 0)
+			if (ent.IsPlayer())
 				angleDiff.y = exit.angles.y - ent.pev.v_angle.y;
 			else 
 				angleDiff.y = exit.angles.y - oldAngles.y;
@@ -913,7 +986,7 @@ void teleportEnt(CBaseEntity@ ent, int portalIdx, Vector offset)
 		
 		if (exit.type == PORTAL_BIDIR)
 		{
-			if (ent.IsPlayer() != 0)
+			if (ent.IsPlayer())
 			{
 				CBasePlayer@ plr = cast< CBasePlayer@ >(@ent);
 				PlayerState@ state = getPlayerState(plr);
@@ -1046,6 +1119,7 @@ void portalThink()
 				state.removeConfirm = false;
 				state.deletePortal = -1;
 				state.linkLast = -1;
+				state.menuPage = 0;
 			}
 		}
 		
@@ -1099,6 +1173,264 @@ string getPortalOwnerName(CBasePlayer@ caller, Portal@ portal)
 	return "unowned";
 }
 
+// Warning: Doing this within a second of another save could result in a corrupted map save file
+// It's safer to just make a chain of trigger_save if you need to save multiple values
+void saveMapKeyvalue(string label, string value)
+{
+	dictionary keyvalues;
+	string ent_name = 'portalspawner_save_ent_' + label; 
+	keyvalues["targetname"] = ent_name;
+	keyvalues["target"] = ent_name;
+	keyvalues["netname"] = label;
+	keyvalues["message"] = "noise3";
+	keyvalues["noise3"] = value;
+	//keyvalues["m_iszTrigger"] = triggerAfterSave;
+	
+	// Create it, trigger it, and then delete it
+	CBaseEntity@ ent = g_EntityFuncs.CreateEntity( "trigger_save", keyvalues, true );
+	g_EntityFuncs.FireTargets(ent_name, null, null, USE_ON);
+	if (ent !is null)
+		g_EntityFuncs.Remove(ent);
+	println("Saving key: " + label);
+}
+
+EHandle createTriggerSave(string label, string value, string triggerAfterSave)
+{
+	dictionary keyvalues;
+	string ent_name = 'portalspawner_save_ent_' + label; 
+	keyvalues["targetname"] = ent_name;
+	keyvalues["target"] = ent_name;
+	keyvalues["netname"] = label;
+	keyvalues["message"] = "noise3";
+	keyvalues["noise3"] = value;
+	keyvalues["m_iszTrigger"] = triggerAfterSave;
+	
+	CBaseEntity@ ent = g_EntityFuncs.CreateEntity( "trigger_save", keyvalues, true );
+	EHandle ent_handle = ent;
+	return ent_handle;
+}
+
+string loadMapKeyvalue(string label)
+{
+	dictionary keyvalues;
+	string ent_name = 'portalspawner_load_ent_' + label; 
+	keyvalues["targetname"] = ent_name;
+	keyvalues["target"] = ent_name;
+	keyvalues["netname"] = label;
+	keyvalues["message"] = "noise3";
+	
+	// Create and trigger it
+	CBaseEntity@ ent = g_EntityFuncs.CreateEntity( "trigger_load", keyvalues, true );
+	g_EntityFuncs.FireTargets(ent_name, null, null, USE_ON);
+	
+	// For some reason we have to run a Find in order to get the updated entity data.
+	// It seems the load happens instantly, but the entity reference isn't updated that fast.
+	string data;
+	CBaseEntity@ updated_ent = g_EntityFuncs.FindEntityByTargetname(null, ent_name);
+	if (updated_ent !is null)
+		data = updated_ent.pev.noise3;
+	else
+		println("Failed to load '" + label + "' from map save file");
+	
+	if (ent !is null)
+		g_EntityFuncs.Remove(ent);
+	
+	return data;
+}
+
+
+string numPortalsKeyname = 'PortalSpawner_count';
+
+EHandle savePortal(int idx)
+{
+	EHandle nullHandle = null;
+	if (idx < 0 or idx >= int(portals.length()))
+	{
+		println("Invalid portal index passed to savePortal(): " + idx + "/" + portals.length());
+		return nullHandle;
+	}
+	
+	Portal@ portal = portals[idx];
+	if (portal.ent) {
+		//println("Saving portal " + idx);
+		CBaseEntity@ ent = portal.ent;
+		
+		// using quotes as delimitters because players can't use them in their names
+		string data = portal.serialize();
+		if (int(data.Length()) > MAX_SAVE_DATA_LENGTH)
+			println("MAYDAY! MAYDAY! SAVE DATA IS TOO LONG FOR PORTAL " + idx);
+		else
+		{
+			return createTriggerSave("PortalSpawner" + idx, data, 'portalspawner_save_ent_' + "PortalSpawner" + (idx+1));
+		}
+	}
+	return nullHandle;
+}
+
+// convert output from Vector.ToString() back into a Vector
+Vector parseVector(string s) {
+	array<string> values = s.Split(",");
+	Vector v(0,0,0);
+	if (values.length() > 0) v.x = atof( values[0] );
+	if (values.length() > 1) v.y = atof( values[1] );
+	if (values.length() > 2) v.z = atof( values[2] );
+	return v;
+}
+
+void loadPortal(int idx)
+{	
+	string data = loadMapKeyvalue("PortalSpawner" + idx);
+	if (data.Length() > 0) {
+		array<string> values = data.Split('"');
+		if (values.length() == 8) {
+			//println("Loading portal " + idx);
+			Vector origin = parseVector(values[0]);
+			Vector angles = parseVector(values[1]);
+			string owner = values[2];
+			int portalType = atoi( values[3] );
+			
+			CBaseEntity@ ent = createPortal(origin, getPortalSprite(portalType), spawn_sound, 0);
+			Portal@ portal = Portal(ent, owner, angles, portalType);
+			portal.creationTime = atof( values[4] );
+			portal.exitSpeed = atoi( values[5] );
+			portal.rotateMode = atoi( values[6] );
+			portal.target = atoi( values[7] );
+			portals.insertLast(portal);
+		} else {
+			println("Invalid data for portal " + idx);
+		}
+		
+	} else {
+		println("Failed to load data for portal " + idx);
+	}
+}
+
+bool saveLoadBlock = false;
+
+void saveMapPortals()
+{	
+	saveMapKeyvalue(numPortalsKeyname, "" + portals.length());
+	
+	// Apparently trigger_save lies when it says it has finished. So, we have to wait after each one
+	// to be sure we don't corrupt the save file or truncate any values. It still might happen anyway... oh well.
+	/*
+	float delay = 0.0;
+	for (uint i = 0; i < portals.length(); i++)
+	{
+		g_Scheduler.SetTimeout("savePortal", delay, i);
+		delay += 0.0;
+	}
+	*/
+	
+
+	if (portals.length() == 0)
+		return;
+		
+	saveLoadBlock = true;
+		
+	println("Saving " + portals.length() + " portals");
+
+	// creating a chain of trigger_save seems to work reliably
+	// Too bad I have to create so many extra ents at once
+	array<EHandle> portalSaves; 
+	for (uint i = 0; i < portals.length(); i++)
+		portalSaves.insertLast(savePortal(i));
+
+	CBaseEntity@ firstSave = portalSaves[0];
+	g_EntityFuncs.FireTargets(firstSave.pev.targetname, null, null, USE_ON);
+	
+	for (uint i = 0; i < portalSaves.length(); i++)
+	{
+		CBaseEntity@ ent = portalSaves[i];
+		if (ent !is null) {
+			g_EntityFuncs.Remove(ent);
+		}
+	}
+	
+	saveLoadBlock = false;
+	
+	/*
+	float waitTime = 0.2;
+	float delay = waitTime;
+	uint batchSize = 4;
+	for (uint i = 0; i < portals.length(); i += batchSize)
+	{
+		// cheat the system and save many keyvalues at once
+		string label = "PortalSpawner" + i;
+		string superdata = portals[i].serialize();
+		for (uint k = i+1; k < i+batchSize and k < portals.length(); k++)
+			superdata += "\nPortalSpawner" + k + ":" + portals[k].serialize();
+		g_Scheduler.SetTimeout("saveMapKeyvalue", delay, label, superdata);
+		delay += waitTime;
+	}
+	*/
+	// saving keyvalues in batches turned out even worse somehow. Oh well it was hacky anyway.
+}
+
+CBasePlayer@ getAnyPlayer()
+{
+	CBaseEntity@ ent = null;
+	do {
+		@ent = g_EntityFuncs.FindEntityByClassname(ent, "player"); 
+		if (ent !is null)
+		{
+			CBasePlayer@ plr = cast<CBasePlayer@>(ent);
+			return plr;
+		}
+	} while (ent !is null);
+	return null; 
+}
+
+void unlockSaveLoad()
+{
+	saveLoadBlock = false;
+}
+
+void loadMapPortals()
+{	
+	int numPortals = atoi( loadMapKeyvalue("PortalSpawner_count") );
+	if (numPortals <= 0) {
+		println("No portal data found for this map");
+		return;
+	}
+	
+	saveLoadBlock = true;
+	
+	// prevent anyone from messing up the portals during the load
+	array<string>@ stateKeys = player_states.getKeys();
+	for (uint i = 0; i < stateKeys.length(); i++)
+	{
+		PlayerState@ state = cast<PlayerState@>( player_states[stateKeys[i]] );
+		state.editing = -1;
+		state.touchingPortal = -1;
+		state.editing = -1;
+		state.linkLast = -1;
+		state.menuPage = 0;
+	}
+	
+	if (numPortals > MAX_MAP_PORTALS)
+		numPortals = MAX_MAP_PORTALS;
+		
+	println("Loading " + numPortals + " map portals");
+	
+	float initialWait = 0;
+	if (portals.length() > 0){
+		removeAllPortals();
+		initialWait = 0.5f;
+	}
+	println("NUM PORTALS: " + numPortals);
+	
+	float waitTime = 0.03;
+	float delay = initialWait + waitTime;
+	for (int i = 0; i < numPortals; i++)
+	{
+		// don't go wild and create tons of trigger_load all at once.
+		g_Scheduler.SetTimeout("loadPortal", delay, i);
+		delay += waitTime;
+	}
+	g_Scheduler.SetTimeout("unlockSaveLoad", delay+0.1);
+}
+
 void openPortalMenu(CBasePlayer@ plr)
 {
 	PlayerState@ state = getPlayerState(plr);
@@ -1126,7 +1458,7 @@ void openPortalMenu(CBasePlayer@ plr)
 		
 	}
 	else title = title + ":";
-	state.menu.SetTitle(title + "\n");
+	state.menu.SetTitle(title + "\n\n");
 	
 	if (state.deletePortal != -1)
 	{
@@ -1198,19 +1530,34 @@ void openPortalMenu(CBasePlayer@ plr)
 	}
 	else
 	{
-		state.menu.AddItem("Create entrance\n", "add-enter");
-		state.menu.AddItem("Create exit\n", "add-exit");
-		state.menu.AddItem("Create bidirectional\n", "add-bi");
-		
-		state.menu.AddItem("Edit portal\n", "edit");
-		
-		state.menu.AddItem("Delete portal\n", "delete");
-		
-		if (portalsEnabled)
-			state.menu.AddItem("Disable portals\n", "toggle-portals");
+		if (state.menuPage == 0) 
+		{
+			state.menu.AddItem("Create entrance\n", "add-enter");
+			state.menu.AddItem("Create exit\n", "add-exit");
+			state.menu.AddItem("Create bidirectional\n", "add-bi");
+			
+			state.menu.AddItem("Edit portal\n", "edit");
+			
+			state.menu.AddItem("Delete portal\n", "delete");
+			
+			if (portalsEnabled)
+				state.menu.AddItem("Disable portals\n", "toggle-portals");
+			else
+				state.menu.AddItem("Enable portals\n", "toggle-portals");
+				
+			state.menu.AddItem("More", "next-page");
+		}
 		else
-			state.menu.AddItem("Enable portals\n", "toggle-portals");
-		state.menu.AddItem("Remove all portals", "kill-all");
+		{
+			state.menu.AddItem("Remove all portals\n", "kill-all");
+			state.menu.AddItem("\n", "");
+			state.menu.AddItem("Save portals\n", "save");
+			state.menu.AddItem("\n", "");
+			state.menu.AddItem("Load portals\n", "load");
+			state.menu.AddItem("\n", "");
+			state.menu.AddItem("Back", "previous-page");
+		}
+		
 	}
 
 	state.openMenu(plr);
@@ -1238,6 +1585,7 @@ HookReturnCode ClientLeave(CBasePlayer@ leaver)
 			state.touchingPortal = -1;
 			state.editing = -1;
 			state.linkLast = -1;
+			state.menuPage = 0;
 			break;
 		}
 	}
@@ -1267,7 +1615,10 @@ HookReturnCode ClientSay( SayParameters@ pParams )
 	
 			state.editing = -1;
 			state.linkLast = -1;
-			openPortalMenu(plr);
+			state.menuPage = 0;
+			
+			if (args[0] == ".portal_menu")
+				openPortalMenu(plr);
 
 			return HOOK_HANDLED;
 		}
