@@ -1601,13 +1601,12 @@ HookReturnCode ClientLeave(CBasePlayer@ leaver)
 bool doPortalCommand(CBasePlayer@ plr, const CCommand@ args)
 {
 	PlayerState@ state = getPlayerState(plr);
-	println("DO THE COMMMAND");
 	
 	if ( args.ArgC() > 0 )
 	{
 		if (args[0] == '.ps')
 		{
-			println("GOT CMD: " + args[0] + " " + args.ArgC());
+			//println("GOT CMD: " + args[0] + " " + args.ArgC());
 			if ( args.ArgC() == 1 ) // open menu if no args
 			{
 				if (g_PlayerFuncs.AdminLevel(plr) < ADMIN_YES)
@@ -1657,7 +1656,7 @@ HookReturnCode ClientSay( SayParameters@ pParams )
 {
 	CBasePlayer@ plr = pParams.GetPlayer();
 	const CCommand@ args = pParams.GetArguments();	
-	println("CLINET SAY");
+	//println("CLINET SAY");
 	if (doPortalCommand(plr, args))
 	{
 		pParams.ShouldHide = true;
