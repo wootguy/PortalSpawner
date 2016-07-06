@@ -514,7 +514,8 @@ void portalMenuCallback(CTextMenu@ menu, CBasePlayer@ plr, int page, const CText
 		state.menuPage = 0;
 		return;
 	}
-	string action = item.szUserData;
+	string action;
+	item.m_pUserData.retrieve(action);
 	
 	
 	if (action == "toggle-portals")
@@ -1391,7 +1392,7 @@ void unlockSaveLoad()
 }
 
 void loadMapPortals()
-{	
+{		
 	int numPortals = atoi( loadMapKeyvalue("PortalSpawner_count") );
 	if (numPortals <= 0) {
 		println("No portal data found for this map");
@@ -1466,14 +1467,14 @@ void openPortalMenu(CBasePlayer@ plr)
 	
 	if (state.deletePortal != -1)
 	{
-		state.menu.AddItem("Yes\n", "delete-yes");
-		state.menu.AddItem("No\n", "delete-no");
+		state.menu.AddItem("Yes\n", any("delete-yes"));
+		state.menu.AddItem("No\n", any("delete-no"));
 	}
 	else if (state.removeConfirm)
 	{
-		state.menu.AddItem("Yes\n", "kill-all");
-		state.menu.AddItem("No\n", "kill-all-cancel");
-		state.menu.AddItem("Only my portals\n", "kill-all-owner");
+		state.menu.AddItem("Yes\n", any("kill-all"));
+		state.menu.AddItem("No\n", any("kill-all-cancel"));
+		state.menu.AddItem("Only my portals\n", any("kill-all-owner"));
 	}
 	else if (state.editing != -1 and state.editing < int(portals.length())) // editing a portal
 	{
@@ -1481,17 +1482,17 @@ void openPortalMenu(CBasePlayer@ plr)
 
 		if (state.linkLast != -1)
 		{
-			state.menu.AddItem("Yes\n", "edit-link-confirm");
-			state.menu.AddItem("No, the one before it\n", "edit-link-last");
-			state.menu.AddItem("No, the one closest to me\n", "edit-link-closest");
-			state.menu.AddItem("Unlink current target\n", "edit-link-random");
-			state.menu.AddItem("Cancel\n", "edit-link-cancel");
+			state.menu.AddItem("Yes\n", any("edit-link-confirm"));
+			state.menu.AddItem("No, the one before it\n", any("edit-link-last"));
+			state.menu.AddItem("No, the one closest to me\n", any("edit-link-closest"));
+			state.menu.AddItem("Unlink current target\n", any("edit-link-random"));
+			state.menu.AddItem("Cancel\n", any("edit-link-cancel"));
 		}
 		else
 		{
 			string target = portal.target == -1 ? "Random" : "portal #" + portal.target;
-			state.menu.AddItem("Target: " + target + "\n", "edit-link-last");
-			state.menu.AddItem("Update position\n", "edit-position");
+			state.menu.AddItem("Target: " + target + "\n", any("edit-link-last"));
+			state.menu.AddItem("Update position\n", any("edit-position"));
 			
 			if (portal.type == PORTAL_EXIT or portal.type == PORTAL_BIDIR)
 			{
@@ -1516,50 +1517,50 @@ void openPortalMenu(CBasePlayer@ plr)
 					case(ROTATE_YAW_ONLY): rotateMode = "Yaw only"; break;
 				}
 				
-				state.menu.AddItem("Update angles: yaw = " + int(portal.angles.y) + "\tpitch = " + int(portal.angles.x) + "\n", "edit-angles");
-				state.menu.AddItem("Exit speed: " + exitSpeed + "\n", "edit-speed");
-				state.menu.AddItem("Rotate entities: " + rotateMode + "\n", "edit-rotate");
+				state.menu.AddItem("Update angles: yaw = " + int(portal.angles.y) + "\tpitch = " + int(portal.angles.x) + "\n", any("edit-angles"));
+				state.menu.AddItem("Exit speed: " + exitSpeed + "\n", any("edit-speed"));
+				state.menu.AddItem("Rotate entities: " + rotateMode + "\n", any("edit-rotate"));
 			}
 			if (portal.type == PORTAL_ENTER or portal.type == PORTAL_BIDIR)
 			{
 				if (portal.type == PORTAL_ENTER) {
-					state.menu.AddItem("\n", "");
-					state.menu.AddItem("\n", "");
-					state.menu.AddItem("\n", "");
+					state.menu.AddItem("\n", any(""));
+					state.menu.AddItem("\n", any(""));
+					state.menu.AddItem("\n", any(""));
 				}
 			}
 			
-			state.menu.AddItem("Done ", "edit-cancel");
+			state.menu.AddItem("Done ", any("edit-cancel"));
 		}
 	}
 	else
 	{
 		if (state.menuPage == 0) 
 		{
-			state.menu.AddItem("Create entrance\n", "add-enter");
-			state.menu.AddItem("Create exit\n", "add-exit");
-			state.menu.AddItem("Create bidirectional\n", "add-bi");
+			state.menu.AddItem("Create entrance\n", any("add-enter"));
+			state.menu.AddItem("Create exit\n", any("add-exit"));
+			state.menu.AddItem("Create bidirectional\n", any("add-bi"));
 			
-			state.menu.AddItem("Edit portal\n", "edit");
+			state.menu.AddItem("Edit portal\n", any("edit"));
 			
-			state.menu.AddItem("Delete portal\n", "delete");
+			state.menu.AddItem("Delete portal\n", any("delete"));
 			
 			if (portalsEnabled)
-				state.menu.AddItem("Disable portals\n", "toggle-portals");
+				state.menu.AddItem("Disable portals\n", any("toggle-portals"));
 			else
-				state.menu.AddItem("Enable portals\n", "toggle-portals");
+				state.menu.AddItem("Enable portals\n", any("toggle-portals"));
 				
-			state.menu.AddItem("More", "next-page");
+			state.menu.AddItem("More", any("next-page"));
 		}
 		else
 		{
-			state.menu.AddItem("Remove all portals\n", "kill-all");
-			state.menu.AddItem("\n", "");
-			state.menu.AddItem("Save portals\n", "save");
-			state.menu.AddItem("\n", "");
-			state.menu.AddItem("Load portals\n", "load");
-			state.menu.AddItem("\n", "");
-			state.menu.AddItem("Back", "previous-page");
+			state.menu.AddItem("Remove all portals\n", any("kill-all"));
+			state.menu.AddItem("\n", any(""));
+			state.menu.AddItem("Save portals\n", any("save"));
+			state.menu.AddItem("\n", any(""));
+			state.menu.AddItem("Load portals\n", any("load"));
+			state.menu.AddItem("\n", any(""));
+			state.menu.AddItem("Back", any("previous-page"));
 		}
 		
 	}
