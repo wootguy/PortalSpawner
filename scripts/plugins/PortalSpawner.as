@@ -439,6 +439,8 @@ string portal_targetname = "pspawner_asplugin_portal";
 string portal_save_path = "scripts/plugins/store/PortalSpawner/";
 string portal_save_path_fallback = "scripts/plugins/store/";
 
+CCVar@ g_autoload;
+
 array<Portal@> portals;
 
 int MAX_MAP_PORTALS = 32;
@@ -457,9 +459,12 @@ void PluginInit()
 	g_Hooks.RegisterHook( Hooks::Player::ClientDisconnect, @ClientLeave );
 	g_Hooks.RegisterHook( Hooks::Game::MapChange, @MapChange );
 	
+	@g_autoload = CCVar("autoload", 1, "Enables automatic loading of portals when a map starts", ConCommandFlag::AdminOnly);
+	
 	g_Scheduler.SetInterval("portalThink", 0);
 	removeAllPortals();
-	g_Scheduler.SetTimeout("loadMapPortals", 1);
+	if (g_autoload.GetBool())
+		g_Scheduler.SetTimeout("loadMapPortals", 1);
 }
 
 void MapInit()
@@ -473,7 +478,8 @@ void MapInit()
 	g_SoundSystem.PrecacheSound(remove_sound);
 	
 	removeAllPortals();
-	g_Scheduler.SetTimeout("loadMapPortals", 2);
+	if (g_autoload.GetBool())
+		g_Scheduler.SetTimeout("loadMapPortals", 2);
 }
 
 HookReturnCode MapChange()
