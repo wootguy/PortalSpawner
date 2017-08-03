@@ -1,3 +1,5 @@
+// PortalSpawner v6
+// https://forums.svencoop.com/showthread.php/43336-Portal-Spawner
 
 class PlayerState
 {
@@ -49,6 +51,266 @@ enum rotate_modes
 	ROTATE_YES,
 	ROTATE_YAW_ONLY,
 	ROTATE_MODES
+}
+
+class ByteBuffer
+{
+	array<uint8> data; // output encoded in escape characters ("\xFF")
+	uint readPos = 0; // read position
+	int err = 0; // non-zero if read error occurred
+	
+	// Starts at \x01 since null characters aren't allowed in the base128 output
+	// Unrelated note: You can't append \x00 or \0 to a string
+	array<char> HexCodes = {
+		'\x01','\x02','\x03','\x04','\x05','\x06','\x07','\x08','\x09','\x0A','\x0B','\x0C','\x0D','\x0E','\x0F',
+		'\x10','\x11','\x12','\x13','\x14','\x15','\x16','\x17','\x18','\x19','\x1A','\x1B','\x1C','\x1D','\x1E','\x1F',
+		'\x20','\x21','\x22','\x23','\x24','\x25','\x26','\x27','\x28','\x29','\x2A','\x2B','\x2C','\x2D','\x2E','\x2F',
+		'\x30','\x31','\x32','\x33','\x34','\x35','\x36','\x37','\x38','\x39','\x3A','\x3B','\x3C','\x3D','\x3E','\x3F',
+		'\x40','\x41','\x42','\x43','\x44','\x45','\x46','\x47','\x48','\x49','\x4A','\x4B','\x4C','\x4D','\x4E','\x4F',
+		'\x50','\x51','\x52','\x53','\x54','\x55','\x56','\x57','\x58','\x59','\x5A','\x5B','\x5C','\x5D','\x5E','\x5F',
+		'\x60','\x61','\x62','\x63','\x64','\x65','\x66','\x67','\x68','\x69','\x6A','\x6B','\x6C','\x6D','\x6E','\x6F',
+		'\x70','\x71','\x72','\x73','\x74','\x75','\x76','\x77','\x78','\x79','\x7A','\x7B','\x7C','\x7D','\x7E','\x7F',
+		'\x80',
+	};
+	
+	ByteBuffer() {}
+	
+	ByteBuffer(File& f)
+	{
+		string base128Data;
+		f.ReadLine(base128Data, "\xFF");
+		base128decode(base128Data);
+	}
+	
+	// convert a float to a fixed-point 18.14 integer
+	// Max range of +/-131,071 with 16383 steps (~0.000061) between whole numbers 
+	int32 floatToFixed14(float f)
+	{
+		return int32(f * 16384.0f);
+	}
+	
+	float fixed14ToFloat(int32 fixed)
+	{
+		return float(fixed) / 16384.0f;
+	}
+	
+	// convert a double to a fixed-point 32.32 integer
+	// Max range of +/-2.1 billion with 4.3 billion steps (~0.0000000002) between whole numbers 
+	int64 doubleToFixed32(double f)
+	{
+		return int64(f * 2147483648.0);
+	}
+	
+	double fixed32ToDouble(int64 fixed)
+	{
+		return double(fixed) / 2147483648.0;
+	}
+	
+	void WriteByte(uint8 byte)
+	{
+		data.insertLast(byte);
+	}
+	
+	void Write(uint8 num)
+	{
+		WriteByte(num);
+	}
+	
+	void Write(uint16 num)
+	{
+		WriteByte((num >> 8) & 0xff);
+		WriteByte(num & 0xff);
+	}
+	
+	void Write(uint32 num)
+	{
+		WriteByte(num >> 24);
+		WriteByte((num >> 16) & 0xff);
+		WriteByte((num >> 8) & 0xff);
+		WriteByte(num & 0xff);
+	}
+	
+	void Write(uint64 num)
+	{
+		WriteByte(num >> 56);
+		WriteByte((num >> 48) & 0xff);
+		WriteByte((num >> 40) & 0xff);
+		WriteByte((num >> 32) & 0xff);
+		WriteByte((num >> 24) & 0xff);
+		WriteByte((num >> 16) & 0xff);
+		WriteByte((num >> 8) & 0xff);
+		WriteByte(num & 0xff);
+	}
+	
+	void Write(int8 num) { Write(uint8(num)); }
+	void Write(int16 num) { Write(uint16(num)); }
+	void Write(int32 num) { Write(uint32(num)); }
+	void Write(int64 num) { Write(uint64(num)); }
+	
+	void Write(float num)
+	{
+		// Can't interpret float as bytes, so we have to convert to an int first (loses some precision)
+		Write(uint32(floatToFixed14(num)));
+	}
+	
+	void Write(double num)
+	{
+		// Can't interpret float as bytes, so we have to convert to an int first (loses some precision)
+		Write(uint64(doubleToFixed32(num)));
+	}
+	
+	void Write(ByteBuffer&in buf)
+	{
+		for (uint i = 0; i < buf.data.length(); i++)
+			data.insertLast(buf.data[i]);
+	}
+	
+	void Write(string&in s, uint size)
+	{
+		for (uint i = 0; i < size; i++)
+		{
+			if (i < s.Length())
+				WriteByte(uint8(s[i]));
+			else
+				WriteByte(0);
+		}
+	}
+	
+	void Write(string&in s)
+	{
+		for (uint i = 0; i < s.Length(); i++)
+			data.insertLast(uint8(s[i]));
+	}
+	
+	uint64 ReadByte()
+	{
+		if (readPos >= data.length())
+		{
+			println("ByteBuffer: Read overflow (" + (readPos+1) + " / " + data.length() + ")");
+			err++;
+			return 0;
+		}
+		return uint8(data[readPos++]);
+	}
+	
+	uint8 ReadUInt8()
+	{
+		return ReadByte();
+	}
+	
+	uint16 ReadUInt16()
+	{
+		return (ReadByte() << 8) + ReadByte();
+	}
+	
+	uint32 ReadUInt32()
+	{
+		return (ReadByte() << 24) + (ReadByte() << 16) + (ReadByte() << 8) + ReadByte();
+	}
+	
+	uint64 ReadUInt64()
+	{
+		return	(ReadByte() << 56) + (ReadByte() << 48) + (ReadByte() << 40) + (ReadByte() << 32) +
+				(ReadByte() << 24) + (ReadByte() << 16) + (ReadByte() << 8) + ReadByte();
+	}
+	
+	int8 ReadInt8() { return ReadUInt8(); }
+	int16 ReadInt16() { return ReadUInt16(); }
+	int32 ReadInt32() { return ReadUInt32(); }
+	int64 ReadInt64() { return ReadUInt64(); }
+	
+	float ReadFloat()
+	{
+		return fixed14ToFloat(ReadUInt32());
+	}
+	
+	float ReadDouble()
+	{
+		return fixed32ToDouble(ReadUInt64());
+	}
+	
+	string ReadString(uint size)
+	{
+		string ret;
+		for (uint i = 0; i < size; i++)
+		{
+			uint8 b = ReadByte();
+			if (b > 0)
+				ret += HexCodes[b-1];
+		}
+		return ret;
+	}
+	
+	string ReadString()
+	{
+		string ret;
+		while (true)
+		{
+			uint8 byte = ReadByte();
+			if (byte == 0) // null char or reached end of buffer
+				break;
+			if (byte > 0)
+				ret += HexCodes[byte-1];
+		}
+		return ret;
+	}
+	
+	string base128encode()
+	{
+		// https://github.com/seizu/base128/blob/master/base128.php
+		
+		data.insertLast(0);
+		int size = data.length();
+		uint ls = 0;
+		uint rs = 7;
+		uint r = 0;
+		string ret;
+		for(int inx = 0; inx < size; inx++)
+		{
+			if (ls > 7)
+			{
+				inx--;
+				ls = 0;
+				rs = 7;
+			}
+			uint8 nc = data[inx];
+			uint8 r1 = nc;                 // save nc
+			nc = nc << ls;            // shift left for rs
+			nc = (nc & 0x7f) | r;      // OR carry bits
+			r = (r1 >> rs) & 0x7F;     // shift right and save carry bits
+			ls++;
+			rs--;
+			ret += HexCodes[nc];
+		}
+		return ret;
+	}
+	
+	void base128decode(string input)
+	{
+		int size = input.Length();
+		uint rs = 8;
+		uint ls = 7;
+		uint r = 0;
+		for(int inx = 0; inx < size; inx++)
+		{
+			uint8 nc = input[inx] - 1;
+			
+			if (rs > 7)
+			{
+				rs = 1;
+				ls = 7;
+				r = nc;
+				continue;
+			}
+			uint8 r1 = nc;
+			nc = (nc << ls) & 0xFF;
+			nc = nc | r;
+			r = r1 >> rs;
+			rs++;
+			ls--;
+			data.insertLast(nc);
+		}
+	}
 }
 
 class Portal
@@ -138,15 +400,28 @@ class Portal
 		beam.pev.targetname = "portalspawner_beam";
 		beam.SetFlags( BEAM_FSINE );
 	}
-	
-	string serialize()
+		
+	ByteBuffer serialize()
 	{
+		ByteBuffer buf;
+		
 		if (!ent)
-			return "";
-			
+			return buf;
+		
 		CBaseEntity@ e = ent;
-		return e.pev.origin.ToString() + '"' + e.pev.angles.ToString() + '"' + owner + '"' +
-			   type + '"' + creationTime  + '"' + exitSpeed + '"' + rotateMode + '"' + target;
+		buf.Write(e.pev.origin.x);
+		buf.Write(e.pev.origin.y);
+		buf.Write(e.pev.origin.z);
+		buf.Write(e.pev.angles.x);
+		buf.Write(e.pev.angles.y);
+		buf.Write(e.pev.angles.z);
+		buf.Write(owner, 32);
+		buf.Write(int8(type));
+		buf.Write(creationTime);
+		buf.Write(int8(exitSpeed));
+		buf.Write(int8(rotateMode));
+		buf.Write(int8(target));
+		return buf;
 	}
 }
 
@@ -161,6 +436,8 @@ string beam_sprite = 'sprites/laserbeam.spr';
 string spawn_sound = 'debris/beamstart7.wav';
 string remove_sound = 'debris/beamstart11.wav';
 string portal_targetname = "pspawner_asplugin_portal";
+string portal_save_path = "scripts/plugins/store/PortalSpawner/";
+string portal_save_path_fallback = "scripts/plugins/store/";
 
 array<Portal@> portals;
 
@@ -181,6 +458,8 @@ void PluginInit()
 	g_Hooks.RegisterHook( Hooks::Game::MapChange, @MapChange );
 	
 	g_Scheduler.SetInterval("portalThink", 0);
+	removeAllPortals();
+	g_Scheduler.SetTimeout("loadMapPortals", 1);
 }
 
 void MapInit()
@@ -237,7 +516,7 @@ PlayerState@ getPlayerState(CBasePlayer@ plr)
 	return cast<PlayerState@>( player_states[steamId] );
 }
 
-CBaseEntity@ createPortal(Vector origin, string spriteFile, string soundFile, float zoffset)
+CBaseEntity@ createPortal(Vector origin, string spriteFile, string soundFile, float zoffset, bool spawnSound=true)
 {	
 	// create sprite at this location
 	string spriteName = portal_targetname;
@@ -257,7 +536,8 @@ CBaseEntity@ createPortal(Vector origin, string spriteFile, string soundFile, fl
 	CBaseEntity@ portal = g_EntityFuncs.CreateEntity( "env_sprite", keyvalues, true );
 	
 	// play sound so you feel like you've accomplished something
-	g_SoundSystem.PlaySound(portal.edict(), CHAN_STATIC, soundFile, 1.0f, 1.0f, 0, 100);
+	if (spawnSound)
+		g_SoundSystem.PlaySound(portal.edict(), CHAN_STATIC, soundFile, 1.0f, 1.0f, 0, 100);
 		
 	return portal;
 }
@@ -297,10 +577,6 @@ bool isTooCloseToPortal(CBasePlayer@ plr, int ignoreIdx)
 }
 
 bool canAddPortal(CBasePlayer@ plr) {
-	if (saveLoadBlock) {
-		g_PlayerFuncs.SayText(plr, "Wait for the current save/load operation to finish!\n");
-		return false;
-	}
 	if (int(portals.length()) == MAX_MAP_PORTALS)
 	{
 		g_PlayerFuncs.SayText(plr, "Max portals reached (" + MAX_MAP_PORTALS + ")\n");
@@ -562,11 +838,6 @@ void portalMenuCallback(CTextMenu@ menu, CBasePlayer@ plr, int page, const CText
 					break;
 				}
 			}
-			
-			if (saveLoadBlock) {
-				g_PlayerFuncs.SayText(plr, "Wait for the current save/load operation to finish!\n");
-				canEdit = false;
-			}
 	
 			if (canEdit)
 			{
@@ -776,24 +1047,13 @@ void portalMenuCallback(CTextMenu@ menu, CBasePlayer@ plr, int page, const CText
 	}
 	else if (action == "save") 
 	{
-		if (!saveLoadBlock)
-		{
-			g_PlayerFuncs.SayTextAll(plr, "" + plr.pev.netname + " saved map portals\n");
-			saveMapPortals();
-		}
-		else
-			g_PlayerFuncs.SayText(plr, "Wait for the current save/load operation to finish!\n");
-		
+		g_PlayerFuncs.SayTextAll(plr, "" + plr.pev.netname + " saved map portals\n");
+		saveMapPortals();
 	}
 	else if (action == "load") 
 	{
-		if (!saveLoadBlock)
-		{
-			g_PlayerFuncs.SayTextAll(plr, "" + plr.pev.netname + " reloaded map portals\n");
-			loadMapPortals();
-		}
-		else
-			g_PlayerFuncs.SayText(plr, "Wait for the current save/load operation to finish!\n");
+		g_PlayerFuncs.SayTextAll(plr, "" + plr.pev.netname + " reloaded map portals\n");
+		loadMapPortals();
 	}
 	else if (action.Find("add-") == 0)
 	{
@@ -1178,230 +1438,43 @@ string getPortalOwnerName(CBasePlayer@ caller, Portal@ portal)
 	return "unowned";
 }
 
-// Warning: Doing this within a second of another save could result in a corrupted map save file
-// It's safer to just make a chain of trigger_save if you need to save multiple values
-void saveMapKeyvalue(string label, string value)
-{
-	dictionary keyvalues;
-	string ent_name = 'portalspawner_save_ent_' + label; 
-	keyvalues["targetname"] = ent_name;
-	keyvalues["target"] = ent_name;
-	keyvalues["netname"] = label;
-	keyvalues["message"] = "noise3";
-	keyvalues["noise3"] = value;
-	//keyvalues["m_iszTrigger"] = triggerAfterSave;
-	
-	// Create it, trigger it, and then delete it
-	CBaseEntity@ ent = g_EntityFuncs.CreateEntity( "trigger_save", keyvalues, true );
-	g_EntityFuncs.FireTargets(ent_name, null, null, USE_ON);
-	if (ent !is null)
-		g_EntityFuncs.Remove(ent);
-	println("Saving key: " + label);
-}
-
-EHandle createTriggerSave(string label, string value, string triggerAfterSave)
-{
-	dictionary keyvalues;
-	string ent_name = 'portalspawner_save_ent_' + label; 
-	keyvalues["targetname"] = ent_name;
-	keyvalues["target"] = ent_name;
-	keyvalues["netname"] = label;
-	keyvalues["message"] = "noise3";
-	keyvalues["noise3"] = value;
-	keyvalues["m_iszTrigger"] = triggerAfterSave;
-	
-	CBaseEntity@ ent = g_EntityFuncs.CreateEntity( "trigger_save", keyvalues, true );
-	EHandle ent_handle = ent;
-	return ent_handle;
-}
-
-string loadMapKeyvalue(string label)
-{
-	dictionary keyvalues;
-	string ent_name = 'portalspawner_load_ent_' + label; 
-	keyvalues["targetname"] = ent_name;
-	keyvalues["target"] = ent_name;
-	keyvalues["netname"] = label;
-	keyvalues["message"] = "noise3";
-	
-	// Create and trigger it
-	CBaseEntity@ ent = g_EntityFuncs.CreateEntity( "trigger_load", keyvalues, true );
-	g_EntityFuncs.FireTargets(ent_name, null, null, USE_ON);
-	
-	// For some reason we have to run a Find in order to get the updated entity data.
-	// It seems the load happens instantly, but the entity reference isn't updated that fast.
-	string data;
-	CBaseEntity@ updated_ent = g_EntityFuncs.FindEntityByTargetname(null, ent_name);
-	if (updated_ent !is null)
-		data = updated_ent.pev.noise3;
-	else
-		println("Failed to load '" + label + "' from map save file");
-	
-	if (ent !is null)
-		g_EntityFuncs.Remove(ent);
-	
-	return data;
-}
-
-
-string numPortalsKeyname = 'PortalSpawner_count';
-
-EHandle savePortal(int idx)
-{
-	EHandle nullHandle = null;
-	if (idx < 0 or idx >= int(portals.length()))
-	{
-		println("Invalid portal index passed to savePortal(): " + idx + "/" + portals.length());
-		return nullHandle;
-	}
-	
-	Portal@ portal = portals[idx];
-	if (portal.ent) {
-		//println("Saving portal " + idx);
-		CBaseEntity@ ent = portal.ent;
-		
-		// using quotes as delimitters because players can't use them in their names
-		string data = portal.serialize();
-		if (int(data.Length()) > MAX_SAVE_DATA_LENGTH)
-			println("MAYDAY! MAYDAY! SAVE DATA IS TOO LONG FOR PORTAL " + idx);
-		else
-		{
-			return createTriggerSave("PortalSpawner" + idx, data, 'portalspawner_save_ent_' + "PortalSpawner" + (idx+1));
-		}
-	}
-	return nullHandle;
-}
-
-// convert output from Vector.ToString() back into a Vector
-Vector parseVector(string s) {
-	array<string> values = s.Split(",");
-	Vector v(0,0,0);
-	if (values.length() > 0) v.x = atof( values[0] );
-	if (values.length() > 1) v.y = atof( values[1] );
-	if (values.length() > 2) v.z = atof( values[2] );
-	return v;
-}
-
-void loadPortal(int idx)
-{	
-	string data = loadMapKeyvalue("PortalSpawner" + idx);
-	if (data.Length() > 0) {
-		array<string> values = data.Split('"');
-		if (values.length() == 8) {
-			//println("Loading portal " + idx);
-			Vector origin = parseVector(values[0]);
-			Vector angles = parseVector(values[1]);
-			string owner = values[2];
-			int portalType = atoi( values[3] );
-			
-			CBaseEntity@ ent = createPortal(origin, getPortalSprite(portalType), spawn_sound, 0);
-			Portal@ portal = Portal(ent, owner, angles, portalType);
-			portal.creationTime = atof( values[4] );
-			portal.exitSpeed = atoi( values[5] );
-			portal.rotateMode = atoi( values[6] );
-			portal.target = atoi( values[7] );
-			portals.insertLast(portal);
-		} else {
-			println("Invalid data for portal " + idx);
-		}
-		
-	} else {
-		println("Failed to load data for portal " + idx);
-	}
-}
-
-bool saveLoadBlock = false;
-
 void saveMapPortals()
 {	
-	saveMapKeyvalue(numPortalsKeyname, "" + portals.length());
-	
-	// Apparently trigger_save lies when it says it has finished. So, we have to wait after each one
-	// to be sure we don't corrupt the save file or truncate any values. It still might happen anyway... oh well.
-	/*
-	float delay = 0.0;
-	for (uint i = 0; i < portals.length(); i++)
+	string path = portal_save_path + g_Engine.mapname + ".dat";
+	File@ f = g_FileSystem.OpenFile( path, OpenFile::WRITE);
+	if (f is null or !f.IsOpen())
 	{
-		g_Scheduler.SetTimeout("savePortal", delay, i);
-		delay += 0.0;
-	}
-	*/
-	
-
-	if (portals.length() == 0)
-		return;
-		
-	saveLoadBlock = true;
-		
-	println("Saving " + portals.length() + " portals");
-
-	// creating a chain of trigger_save seems to work reliably
-	// Too bad I have to create so many extra ents at once
-	array<EHandle> portalSaves; 
-	for (uint i = 0; i < portals.length(); i++)
-		portalSaves.insertLast(savePortal(i));
-
-	CBaseEntity@ firstSave = portalSaves[0];
-	g_EntityFuncs.FireTargets(firstSave.pev.targetname, null, null, USE_ON);
-	
-	for (uint i = 0; i < portalSaves.length(); i++)
-	{
-		CBaseEntity@ ent = portalSaves[i];
-		if (ent !is null) {
-			g_EntityFuncs.Remove(ent);
-		}
+		println("PortalSpawner: The folder '/svencoop/" + portal_save_path + "' does not exist! Using /store/ folder instead");
+		path = portal_save_path_fallback + g_Engine.mapname + ".dat";
+		@f = g_FileSystem.OpenFile( path, OpenFile::WRITE);
 	}
 	
-	saveLoadBlock = false;
-	
-	/*
-	float waitTime = 0.2;
-	float delay = waitTime;
-	uint batchSize = 4;
-	for (uint i = 0; i < portals.length(); i += batchSize)
+	if( f.IsOpen() )
 	{
-		// cheat the system and save many keyvalues at once
-		string label = "PortalSpawner" + i;
-		string superdata = portals[i].serialize();
-		for (uint k = i+1; k < i+batchSize and k < portals.length(); k++)
-			superdata += "\nPortalSpawner" + k + ":" + portals[k].serialize();
-		g_Scheduler.SetTimeout("saveMapKeyvalue", delay, label, superdata);
-		delay += waitTime;
-	}
-	*/
-	// saving keyvalues in batches turned out even worse somehow. Oh well it was hacky anyway.
-}
-
-CBasePlayer@ getAnyPlayer()
-{
-	CBaseEntity@ ent = null;
-	do {
-		@ent = g_EntityFuncs.FindEntityByClassname(ent, "player"); 
-		if (ent !is null)
+		if (portals.length() > 0)
 		{
-			CBasePlayer@ plr = cast<CBasePlayer@>(ent);
-			return plr;
+			ByteBuffer buf;
+			buf.Write(uint8(portals.length()));
+			for (uint i = 0; i < portals.length(); i++)
+				buf.Write(portals[i].serialize());
+			
+			string dataString = buf.base128encode();
+			f.Write(dataString);
+			println("PortalSpawner: Wrote '" + path + "' (" + dataString.Length() + " bytes)");
 		}
-	} while (ent !is null);
-	return null; 
-}
-
-void unlockSaveLoad()
-{
-	saveLoadBlock = false;
+		else
+		{
+			f.Remove();
+			println("PortalSpawner: Deleted " + path);
+		}
+	}
+	else if (portals.length() > 0)
+		println("Failed to open file: " + path);
 }
 
 void loadMapPortals()
-{		
-	int numPortals = atoi( loadMapKeyvalue("PortalSpawner_count") );
-	if (numPortals <= 0) {
-		println("No portal data found for this map");
-		return;
-	}
-	
-	saveLoadBlock = true;
-	
-	// prevent anyone from messing up the portals during the load
+{	
+	// reset player states
 	array<string>@ stateKeys = player_states.getKeys();
 	for (uint i = 0; i < stateKeys.length(); i++)
 	{
@@ -1413,27 +1486,57 @@ void loadMapPortals()
 		state.menuPage = 0;
 	}
 	
-	if (numPortals > MAX_MAP_PORTALS)
-		numPortals = MAX_MAP_PORTALS;
-		
-	println("Loading " + numPortals + " map portals");
-	
-	float initialWait = 0;
-	if (portals.length() > 0){
-		removeAllPortals();
-		initialWait = 0.5f;
-	}
-	println("NUM PORTALS: " + numPortals);
-	
-	float waitTime = 0.03;
-	float delay = initialWait + waitTime;
-	for (int i = 0; i < numPortals; i++)
+	string path = portal_save_path + g_Engine.mapname + ".dat";
+	File@ f = g_FileSystem.OpenFile( path, OpenFile::READ);
+	if (f is null or !f.IsOpen())
 	{
-		// don't go wild and create tons of trigger_load all at once.
-		g_Scheduler.SetTimeout("loadPortal", delay, i);
-		delay += waitTime;
+		println("PortalSpawner: The folder '/svencoop/" + portal_save_path + "' does not exist! Using /store/ folder instead");
+		path = portal_save_path_fallback + g_Engine.mapname + ".dat";
+		@f = g_FileSystem.OpenFile( path, OpenFile::READ);
 	}
-	g_Scheduler.SetTimeout("unlockSaveLoad", delay+0.1);
+	
+	if( f !is null && f.IsOpen() )
+	{
+		removeAllPortals();
+		
+		ByteBuffer buf(f);
+		uint8 numPortals = buf.ReadUInt8();
+		
+		for (uint i = 0; i < numPortals; i++)
+		{			
+			//println("Loading portal " + i);
+			float x = buf.ReadFloat();
+			float y = buf.ReadFloat();
+			float z = buf.ReadFloat();
+			float rx = buf.ReadFloat();
+			float ry = buf.ReadFloat();
+			float rz = buf.ReadFloat();
+			Vector origin = Vector(x, y, z);
+			Vector angles = Vector(rx, ry, rz);
+			string owner = buf.ReadString(32);
+			int portalType = buf.ReadInt8();
+			
+			CBaseEntity@ ent = createPortal(origin, getPortalSprite(portalType), spawn_sound, 0, false);
+			Portal@ portal = Portal(ent, owner, angles, portalType);
+			portal.creationTime = buf.ReadFloat();
+			portal.exitSpeed = buf.ReadInt8();
+			portal.rotateMode = buf.ReadInt8();
+			portal.target = buf.ReadInt8();
+			portals.insertLast(portal);
+			
+			if (buf.err != 0)
+			{
+				println("PortalSpawner: Failed to load " + (numPortals - i) + " portals. Unexpected end of file.");
+				break;
+			}
+		}
+		
+		println("PortalSpawner: Loaded " + numPortals + " portals");
+	}
+	else
+	{
+		println("PortalSpawner: No portal data found for this map");
+	}
 }
 
 void openPortalMenu(CBasePlayer@ plr)
