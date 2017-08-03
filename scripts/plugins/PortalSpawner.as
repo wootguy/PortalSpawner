@@ -1446,12 +1446,12 @@ string getPortalOwnerName(CBasePlayer@ caller, Portal@ portal)
 
 void saveMapPortals()
 {	
-	string path = portal_save_path + g_Engine.mapname + ".dat";
+	string path = portal_save_path + "ps_" + g_Engine.mapname + ".dat";
 	File@ f = g_FileSystem.OpenFile( path, OpenFile::WRITE);
 	if (f is null or !f.IsOpen())
 	{
 		println("PortalSpawner: The folder '/svencoop/" + portal_save_path + "' does not exist! Using /store/ folder instead");
-		path = portal_save_path_fallback + g_Engine.mapname + ".dat";
+		path = portal_save_path_fallback + "ps_" + g_Engine.mapname + ".dat";
 		@f = g_FileSystem.OpenFile( path, OpenFile::WRITE);
 	}
 	
@@ -1492,12 +1492,12 @@ void loadMapPortals()
 		state.menuPage = 0;
 	}
 	
-	string path = portal_save_path + g_Engine.mapname + ".dat";
+	string path = portal_save_path + "ps_" + g_Engine.mapname + ".dat";
 	File@ f = g_FileSystem.OpenFile( path, OpenFile::READ);
 	if (f is null or !f.IsOpen())
 	{
 		println("PortalSpawner: The folder '/svencoop/" + portal_save_path + "' does not exist! Using /store/ folder instead");
-		path = portal_save_path_fallback + g_Engine.mapname + ".dat";
+		path = portal_save_path_fallback + "ps_" + g_Engine.mapname + ".dat";
 		@f = g_FileSystem.OpenFile( path, OpenFile::READ);
 	}
 	
