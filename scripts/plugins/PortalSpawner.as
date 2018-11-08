@@ -1,4 +1,4 @@
-// PortalSpawner v7
+// PortalSpawner v8
 // https://forums.svencoop.com/showthread.php/43336-Portal-Spawner
 
 class PlayerState
@@ -461,6 +461,8 @@ void PluginInit()
 	g_Hooks.RegisterHook( Hooks::Player::ClientDisconnect, @ClientLeave );
 	g_Hooks.RegisterHook( Hooks::Game::MapChange, @MapChange );
 	
+	initLists();
+	
 	@g_autoload = CCVar("autoload", 1, "Enables automatic loading of portals when a map starts", ConCommandFlag::AdminOnly);
 	
 	g_Scheduler.SetInterval("portalThink", 0);
@@ -482,6 +484,31 @@ void MapInit()
 	removeAllPortals();
 	if (g_autoload.GetBool())
 		g_Scheduler.SetTimeout("loadMapPortals", 2);
+}
+
+dictionary projectiles;
+void initLists()
+{
+	projectiles["grenade"] = true;
+	projectiles["playerhornet"] = true;
+	projectiles["rpg_rocket"] = true;
+	projectiles["bolt"] = true;
+	projectiles["grappletongue"] = true;
+	projectiles["displacer_portal"] = true;
+	projectiles["weaponbox"] = true;
+	projectiles["player"] = true;
+	projectiles["shock_beam"] = true;
+	projectiles["gonomespit"] = true;
+	projectiles["voltigoreshock"] = true;
+	projectiles["controller_energy_ball"] = true;
+	projectiles["controller_head_ball"] = true;
+	projectiles["hornet"] = true;
+	projectiles["squidspit"] = true;
+	projectiles["bmortar"] = true;
+	projectiles["garg_stomp"] = true;
+	projectiles["pitdronespike"] = true;
+	projectiles["hvr_rocket"] = true;
+	projectiles["kingpin_plasma_ball"] = true;
 }
 
 HookReturnCode MapChange()
@@ -1353,14 +1380,7 @@ void portalThink()
 			@ent = g_EntityFuncs.FindEntityInSphere(ent, portalEnt.pev.origin, portalTouchRadius, "*", "classname"); 
 			if (ent !is null)
 			{
-				string cname = string(ent.pev.classname);
-				if (cname == "grenade" or cname == "playerhornet" or cname == "rpg_rocket" or 
-					cname == "bolt" or cname == "grappletongue" or cname == "displacer_portal" or
-					cname == "sporegrenade" or cname == "weaponbox" or cname == "player" or
-					cname == "shock_beam" or cname == "gonomespit" or cname == "voltigoreshock" or
-					cname == "controller_energy_ball" or cname == "controller_head_ball" or
-					cname == "hornet" or cname == "squidspit" or cname == "bmortar" or cname == "garg_stomp" or
-					cname == "pitdronespike" or cname == "hvr_rocket" or cname == "kingpin_plasma_ball")
+				if (projectiles.exists(ent.pev.classname))
 				{
 					teleportEnt(ent, int(i), Vector(0,0,0));
 				}
