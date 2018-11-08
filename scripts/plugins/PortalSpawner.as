@@ -505,12 +505,10 @@ void println(string text) { print(text + "\n"); }
 // Will create a new state if the requested one does not exit
 PlayerState@ getPlayerState(CBasePlayer@ plr)
 {
-	string steamId = g_EngineFuncs.GetPlayerAuthId( plr.edict() );
-	if (steamId == 'STEAM_ID_LAN') {
-		steamId = plr.pev.netname;
-	}
+	string steamId = getPlayerUniqueId(plr);
+	PlayerState@ retState = cast<PlayerState@>( player_states[steamId] );
 	
-	if ( !player_states.exists(steamId) )
+	if ( retState is null )
 	{
 		PlayerState state;
 		state.plr = plr;
@@ -520,8 +518,27 @@ PlayerState@ getPlayerState(CBasePlayer@ plr)
 		state.deletePortal = -1;
 		state.menuPage = 0;
 		player_states[steamId] = state;
+		return state;
 	}
-	return cast<PlayerState@>( player_states[steamId] );
+	
+	return retState;
+}
+
+string getPlayerUniqueId(CBasePlayer@ plr)
+{
+	string steamId = g_EngineFuncs.GetPlayerAuthId( plr.edict() );
+	if (steamId == 'STEAM_ID_LAN') {
+		steamId = plr.pev.netname;
+	}
+	return steamId;
+}
+
+CBasePlayer@ getPlayerByUniqueId(string id)
+{
+	PlayerState@ state = cast<PlayerState@>(player_states[id]);
+	if (state !is null)
+		return cast<CBasePlayer@>(state.plr.GetEntity());
+	return null;
 }
 
 CBaseEntity@ createPortal(Vector origin, string spriteFile, string soundFile, float zoffset, bool spawnSound=true)
@@ -619,6 +636,8 @@ void removePortal(int idx)
 	for (uint i = 0; i < stateKeys.length(); i++)
 	{
 		PlayerState@ state = cast<PlayerState@>( player_states[stateKeys[i]] );
+		if (state is null)
+			continue;
 		if (state.editing == -1)
 			continue;
 		if (state.editing == idx) {
@@ -1053,6 +1072,31 @@ void portalMenuCallback(CTextMenu@ menu, CBasePlayer@ plr, int page, const CText
 		g_PlayerFuncs.SayText(plr, "All of your portals were removed\n");
 		state.removeConfirm = false;
 	}
+	else if (action.Find("kill-all-owner-") == 0)
+	{
+		string owner = action.SubString("kill-all-owner-".Length());
+		CBasePlayer@ ownerPlr = getPlayerByUniqueId(owner);
+		string playername = ownerPlr !is null ? string(ownerPlr.pev.netname) : "<unknown>";
+		bool unowned = ownerPlr is null;
+	
+		for (uint i = 0; i < portals.length(); i++)
+		{
+			if ((!unowned and portals[i].owner == owner) or (unowned and @getPlayerByUniqueId(portals[i].owner) == null))
+			{
+				removePortal(i);
+				i--;
+			}
+		}
+		
+		if (unowned)
+			g_PlayerFuncs.SayText(plr, "All unowned portals were removed\n");
+		else
+			g_PlayerFuncs.SayText(plr, "All of " + playername + "'s portals were removed\n");
+		if (ownerPlr !is null)
+			g_PlayerFuncs.SayText(ownerPlr, "All of your portals were removed by " + plr.pev.netname + "\n");
+		state.removeConfirm = false;
+	
+	}
 	else if (action == "save") 
 	{
 		g_PlayerFuncs.SayTextAll(plr, "" + plr.pev.netname + " saved map portals\n");
@@ -1376,6 +1420,8 @@ void portalThink()
 	for (uint i = 0; i < stateKeys.length(); i++)
 	{
 		PlayerState@ state = cast<PlayerState@>( player_states[stateKeys[i]] );
+		if (state is null or !state.plr.IsValid())
+			continue;
 		CBaseEntity@ plr = state.plr;
 		
 		if (state.editing != -1)
@@ -1585,6 +1631,21 @@ void openPortalMenu(CBasePlayer@ plr)
 		state.menu.AddItem("Yes", any("kill-all"));
 		state.menu.AddItem("No", any("kill-all-cancel"));
 		state.menu.AddItem("Only my portals", any("kill-all-owner"));
+		
+		dictionary names;
+		names[getPlayerUniqueId(plr)] = true;
+		for (uint i = 0; i < portals.size(); i++)
+		{
+			string ownerFormatted = getPortalOwnerName(plr, portals[i]);
+			string owner = portals[i].owner;
+			if (names.exists(owner)) {
+				continue;
+			}
+			names[owner] = true;
+			
+			state.menu.AddItem("Only " + ownerFormatted + " portals", any("kill-all-owner-" + owner));
+		}
+		
 	}
 	else if (state.editing != -1 and state.editing < int(portals.length())) // editing a portal
 	{
