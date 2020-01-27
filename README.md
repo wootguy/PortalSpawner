@@ -23,9 +23,9 @@ Say `.ps` or type `.ps` in console to open the menu. The menu will stay open unt
 
 To spawn a portal without using the menu, use the following commands:
 
-`.ps en` = spawns a portal entrance
-`.ps ex` = spawns a portal exit
-`.ps bi` = spawns a bidirectional portal
+`.ps en` = spawns a portal entrance  
+`.ps ex` = spawns a portal exit  
+`.ps bi` = spawns a bidirectional portal  
 You can type out ".ps enter" or ".ps exit" or ".ps bidirectional" if you really want to.
 
 Portal entrances can only be linked to portal exits, and bidirectional portals can only be linked to other bidirectional portals. By default, portals will choose random destinations. You can link portals and change properties in the portal edit menu.
