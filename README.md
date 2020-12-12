@@ -51,3 +51,18 @@ This plugin uses an inefficient method for detecting entities near portals. As y
 The maximum portals allowed (for now) is 32. Each teleport event creates 2 beam entitites that exist for half a second. The worst case scenario is that 96 extra entities exist at one time, which shouldn't be a problem unless a map is near 2000 entities (use cl_entitycount to check this).
 
 4 sprites and 2 sounds are precached.
+
+# Installation
+
+1. Extract the `scripts` folder to your `svencoop_addon/` folder
+1. Create a folder named `PortalSpawner` in `/svencoop/scripts/plugins/store/`.
+   The plugin will save map portal files in here to keep your /store/ folder clean.
+1. Add this to `svencoop/default_plugins.txt`
+```
+"plugin"
+{
+    "name" "PortalSpawner"
+    "script" "PortalSpawner"
+    "concommandns" "ps"
+}
+```
