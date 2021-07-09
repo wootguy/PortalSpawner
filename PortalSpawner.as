@@ -568,22 +568,36 @@ CBasePlayer@ getPlayerByUniqueId(string id)
 	return null;
 }
 
-CBaseEntity@ createPortal(Vector origin, string spriteFile, string soundFile, float zoffset, bool spawnSound=true)
+CBaseEntity@ createPortal(Vector origin, int portalType, string soundFile, float zoffset, bool spawnSound=true)
 {	
 	// create sprite at this location
 	string spriteName = portal_targetname;
 	dictionary keyvalues;
 	keyvalues["targetname"] = spriteName;
-	keyvalues["model"] = spriteFile;
 	keyvalues["framerate"] = portalsEnabled ? "10" : "0";
 	keyvalues["scale"] = "1";
 	keyvalues["rendermode"] = "5";
 	keyvalues["renderfx"] = "0";
-	keyvalues["rendercolor"] = "255 255 255";
 	keyvalues["renderamt"] = portalsEnabled ? "200" : "100";
 	keyvalues["spawnflags"] = "1";
 	keyvalues["made_with_portal_spawner"] = "very_yes"; // TODO: This doesn't work. Learn about custom keyvalues
 	keyvalues["origin"] = "" + origin.x + " " + origin.y + " " + (origin.z+zoffset);
+	
+	switch(portalType)
+	{
+		case PORTAL_ENTER:
+			keyvalues["model"] = entrance_sprite;
+			keyvalues["rendercolor"] = "255 255 255";
+			break;
+		case PORTAL_EXIT:
+			keyvalues["model"] = exit_sprite;
+			keyvalues["rendercolor"] = "255 255 255";
+			break;
+		case PORTAL_BIDIR:
+			keyvalues["model"] = bi_sprite;
+			keyvalues["rendercolor"] = "255 255 255";
+			break;
+	}
 	
 	CBaseEntity@ portal = g_EntityFuncs.CreateEntity( "env_sprite", keyvalues, true );
 	
@@ -779,17 +793,6 @@ bool isPlayerEditingPortal(int idx)
 	return false;
 }
 
-string getPortalSprite(int portalType)
-{
-	switch(portalType)
-	{
-		case PORTAL_ENTER: return entrance_sprite;
-		case PORTAL_EXIT: return exit_sprite;
-		case PORTAL_BIDIR: return bi_sprite;
-	}
-	return entrance_sprite;
-}
-
 void add_portal_action(CBasePlayer@ plr, string action)
 {
 	PlayerState@ state = getPlayerState(plr);
@@ -809,10 +812,9 @@ void add_portal_action(CBasePlayer@ plr, string action)
 					portalType = PORTAL_EXIT;
 				else if (action == "add-bi") 
 					portalType = PORTAL_BIDIR;
-				string spriteType = getPortalSprite(portalType);
 				string spawnSound = super_spawn ? "" : spawn_sound;
 				
-				CBaseEntity@ portalEnt = createPortal(plr.pev.origin, spriteType, spawnSound, portalOffset);
+				CBaseEntity@ portalEnt = createPortal(plr.pev.origin, portalType, spawnSound, portalOffset);
 				portalEnt.pev.origin = portalEnt.pev.origin + offset;
 				Portal@ portal = Portal(portalEnt, plr, angles, portalType);
 				portals.insertLast(portal);
@@ -1589,7 +1591,7 @@ void loadMapPortals()
 			string owner = buf.ReadString(32);
 			int portalType = buf.ReadInt8();
 			
-			CBaseEntity@ ent = createPortal(origin, getPortalSprite(portalType), spawn_sound, 0, false);
+			CBaseEntity@ ent = createPortal(origin, portalType, spawn_sound, 0, false);
 			Portal@ portal = Portal(ent, owner, angles, portalType);
 			portal.creationTime = buf.ReadFloat();
 			portal.exitSpeed = buf.ReadInt8();
