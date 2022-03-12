@@ -1806,7 +1806,7 @@ bool doPortalCommand(CBasePlayer@ plr, const CCommand@ args)
 			{
 				if (g_PlayerFuncs.AdminLevel(plr) < ADMIN_YES)
 				{
-					g_PlayerFuncs.SayText(plr, "You don't have access to that command, peasent.\n");
+					g_PlayerFuncs.SayText(plr, "You don't have access to that command, peasant.\n");
 					return true;
 				}
 		
@@ -1822,7 +1822,7 @@ bool doPortalCommand(CBasePlayer@ plr, const CCommand@ args)
 			{
 				if (g_PlayerFuncs.AdminLevel(plr) < ADMIN_YES)
 				{
-					g_PlayerFuncs.SayText(plr, "You don't have access to that command, peasent.\n");
+					g_PlayerFuncs.SayText(plr, "You don't have access to that command, peasant.\n");
 					return true;
 				}
 		
