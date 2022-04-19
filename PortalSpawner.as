@@ -1259,6 +1259,10 @@ void teleportEnt(CBaseEntity@ ent, int portalIdx, Vector offset)
 		{
 			ent.pev.flDuckTime = 26;
 			ent.pev.flags |= FL_DUCKING;
+			
+			// tell other plugins that a player was teleported
+			CustomKeyvalues@ pCustom = ent.GetCustomKeyvalues();
+			pCustom.SetKeyvalue( "$f_lastPsTele", g_Engine.time );
 		}
 		
 		if (exit.rotateMode != ROTATE_NO)
