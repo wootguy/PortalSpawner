@@ -1,68 +1,37 @@
-# PortalSpawner
-*Woooooooo portals!*
+# TooManyPolys
+This plugin replaces high-poly player models with low-poly versions to improve FPS. Models are replaced in order from most to least polygons, until the visible 
+polygon count is below a limit that you set. The plugin also prevents players from using old model names or unofficial model names introduced by players who copy-paste models and rename them.
 
-![portals in action](http://i.imgur.com/9loiCe6.gif)
+Looking for models with a low poly count? Try here:  
+https://wootguy.github.io/scmodels/
 
-# Overview:
+The model database needs to be updated as new models are released. Run `python update.py` occasionally or download `models.txt` and `aliases.txt` from this repo to keep up-to-date.
 
-The original purpose of this plugin is to bypass buggy map sections, or to create shortcuts in maps that need them. It's also good for lulz. 
+## CVars
+- `as_command hipoly.default_poly_limit 32000` sets the default polygon limit.
 
-Pretty much every possible entity you can think of will be able to go through portals, including weapon projectiles (grenades, hornets, displacers, etc.) and func_pushable. 
+## Commands
+- `.hipoly` displays the help menu.
+- `.hipoly [0/1/toggle]` toggles the polygon limit on/off.
+- `.limitpoly X` changes the polygon limit (X = poly count, in thousands).
+- `.listpoly` lists each player's desired model and polygon count.
+- `.debugpoly [0/1/2]` set debug mode, which shows:
+  - How many player model polys the server thinks you can see.
+  - List of players who are having their models replaced
+  - Lasers showing which models are replaced (mode 2 only)
+    - No line = HD model (not replaced)
+    - Yellow  = SD model
+    - Red     = LD model
 
-Portals can be saved and loaded. The data files can be found in your /svencoop/scripts/plugins/store/ folder. If you create a "PortalSpawner" folder inside /store/ then the files will be written there instead (keeps your /store/ folder clean).
-
-# Usage:
-
-Say `.ps` or type `.ps` in console to open the menu. The menu will stay open until you explicitly "Exit" it or if you die. Admin rights are required to use this.
-
-**There are three types of portals you can spawn:**
-
-1) Portal entrance (orange)
-2) Portal exit (green)
-3) Bidirectional portal (white-ish)
-
-To spawn a portal without using the menu, use the following commands:
-
-`.ps en` = spawns a portal entrance  
-`.ps ex` = spawns a portal exit  
-`.ps bi` = spawns a bidirectional portal  
-You can type out ".ps enter" or ".ps exit" or ".ps bidirectional" if you really want to.
-
-Portal entrances can only be linked to portal exits, and bidirectional portals can only be linked to other bidirectional portals. By default, portals will choose random destinations. You can link portals and change properties in the portal edit menu.
-
-## Portal edit menu options:
-
-1) Target - Choose a portal to link with (default is "Random")
-2) Update Position - Press this to move the portal to your current position
-3) Update Angles - The direction you want entities to be launched out
-4) Exit speed - The speed you want entities to launch out of the portal (Default is "Same as input", which means no launching)
-5) Rotate entities (Yes/No/Yaw only) - Whether to rotate entity look direction and velocity
-
-# CVars:
+## Installation
+1. Create a symlink from `svencoop_addon/models/player` to `svencoop_addon/scripts/plugins/store/playermodelfolder`
+1. Make sure the symlinked player model folder has _all_ available player models - **default models included!**. All player model paths must also be lowercase if served by a Linux host.
+1. Add this to `default_plugins.txt`:
 ```
-as_command ps.autoload 1
-```
-`ps.autoload` disables auto-loading on map start if set to 0.
-
-# Server Impact:
-
-This plugin uses an inefficient method for detecting entities near portals. As you add more portals, you may notice an FPS drop or higher CPU usage. I'm planning to improve this if we ever get anything like an EntityCreated hook for AngelScript.
-
-The maximum portals allowed (for now) is 32. Each teleport event creates 2 beam entitites that exist for half a second. The worst case scenario is that 96 extra entities exist at one time, which shouldn't be a problem unless a map is near 2000 entities (use cl_entitycount to check this).
-
-4 sprites and 2 sounds are precached.
-
-# Installation
-
-1. Extract the `scripts` folder to your `svencoop_addon/` folder
-1. Create a folder named `PortalSpawner` in `/svencoop/scripts/plugins/store/`.
-   The plugin will save map portal files in here to keep your /store/ folder clean.
-1. Add this to `svencoop/default_plugins.txt`
-```
-"plugin"
-{
-    "name" "PortalSpawner"
-    "script" "PortalSpawner"
-    "concommandns" "ps"
-}
+  "plugin"
+  {
+    "name" "TooManyPolys"
+    "script" "TooManyPolys/TooManyPolys"
+    "concommandns" "hipoly"
+  }
 ```
