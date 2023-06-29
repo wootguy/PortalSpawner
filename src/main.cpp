@@ -1,16 +1,9 @@
 #include "main.h"
-#include "meta_init.h"
-#include "misc_utils.h"
-#include "meta_utils.h"
-#include "private_api.h"
+#include "mmlib.h"
 #include <set>
 #include <map>
-#include "Scheduler.h"
-#include <vector>
-#include "StartSound.h"
-#include "meta_helper.h"
-#include "TextMenu.h"
-#include "temp_ents.h"
+
+using namespace std;
 
 // TODO:
 // was $f_lastPsTele ever used in other plugins?
@@ -115,7 +108,7 @@ CBaseEntity* createPortal(Vector origin, int portalType, string soundFile, float
 		break;
 	}
 
-	CBaseEntity* portal = (CBaseEntity*)CreateEntity("env_sprite", keyvalues, true)->pvPrivateData;
+	CBaseEntity* portal = CreateEntity("env_sprite", keyvalues, true);
 
 	// play sound so you feel like you've accomplished something
 	if (spawnSound)
@@ -818,7 +811,7 @@ void teleportEnt(CBaseEntity* ent, int portalIdx, Vector offset)
 				keyvalues["StrikeTime"] = "0";
 				keyvalues["spawnflags"] = "0";
 				keyvalues["origin"] = to_string(exitEnt->pev->origin.x) + " " + to_string(exitEnt->pev->origin.y) + " " + to_string(exitEnt->pev->origin.z);
-				CBaseEntity* specialfx = (CBaseEntity*)CreateEntity("env_beam", keyvalues, true)->pvPrivateData;
+				CBaseEntity* specialfx = CreateEntity("env_beam", keyvalues, true);
 				gpGamedllFuncs->dllapi_table->pfnUse(specialfx->edict(), specialfx->edict());
 				g_Scheduler.SetTimeout(removeEnt, 0.5f, EHandle(specialfx));
 			}

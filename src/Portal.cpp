@@ -1,4 +1,7 @@
 #include "Portal.h"
+#include "main.h"
+
+using namespace std;
 
 Portal::Portal() {}
 
