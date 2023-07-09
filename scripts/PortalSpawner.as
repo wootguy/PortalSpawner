@@ -1016,6 +1016,7 @@ void portalMenuCallback(CTextMenu@ menu, CBasePlayer@ plr, int page, const CText
 	}
 	else if (action == "delete-yes")
 	{
+		g_Log.PrintF("[Admin] " + plr.pev.netname + " deleted a portal\n");
 		removePortal(state.deletePortal);
 		state.deletePortal = -1;
 	}
@@ -1056,9 +1057,13 @@ void portalMenuCallback(CTextMenu@ menu, CBasePlayer@ plr, int page, const CText
 		state.removeConfirm = false;
 	}
 	else if (action == "kill-all") {
-		if (state.removeConfirm) {
+		if (state.removeConfirm) {		
 			removeAllPortals();
-			g_PlayerFuncs.SayTextAll(plr, "" + plr.pev.netname + " removed all the portals\n");
+			
+			string msg = "" + plr.pev.netname + " removed all the portals\n";
+			g_PlayerFuncs.SayTextAll(plr, msg);
+			g_Log.PrintF("[Admin] " + msg);
+			
 			state.removeConfirm = false;
 			
 			// play global sound
@@ -1128,7 +1133,9 @@ void portalMenuCallback(CTextMenu@ menu, CBasePlayer@ plr, int page, const CText
 	}
 	else if (action == "save") 
 	{
-		g_PlayerFuncs.SayTextAll(plr, "" + plr.pev.netname + " saved map portals\n");
+		string msg = "" + plr.pev.netname + " saved " + portals.length() + " map portals\n";
+		g_PlayerFuncs.SayTextAll(plr, msg);
+		g_Log.PrintF("[Admin] " + msg);
 		saveMapPortals();
 	}
 	else if (action == "load") 
@@ -1138,6 +1145,7 @@ void portalMenuCallback(CTextMenu@ menu, CBasePlayer@ plr, int page, const CText
 	}
 	else if (action.Find("add-") == 0)
 	{
+		g_Log.PrintF("[Admin] " + plr.pev.netname + " created a portal\n");
 		add_portal_action(plr, action);
 	}
 	
